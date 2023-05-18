@@ -1,0 +1,153 @@
+---
+title: "Bacteria Assessment"
+author: "Andrew Feltmann"
+date: "8/23/2022"
+output: 
+        html_document:
+                toc: yes
+                toc_float: yes
+---
+
+# Outline
+
+This document outlines the processes for running the bacteria assessment code for determining attainment of water quality standards for the state of Arkansas
+
+```{r setup, include=FALSE}
+library(RODBC)
+library(stringr)
+library(foreign)
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(lubridate)
+library(psych)
+```
+
+```{r , include = F}
+options(scipen = 999)
+```
+
+## Data read
+
+Set up the database connection and read in the Bacteria data.
+
+-   POR will need to be updated for each cycle
+
+-   connection may also need to be changed based on when IT finishes exporting the DB to a SQL server
+
+```{r Data connection}
+cycle <- "2024"
+
+porstart<- "2018-04-01"
+porend <- "2023-03-31"
+# Set up the database connection
+
+con <- odbcConnectAccess2007(paste0("E:/",cycle,
+                                    " Integrated Report/Data/WQP_datapipline/WQP pipeline/_targets/Phase 1 Database.accdb"))
+
+primary_data <- sqlQuery(con, paste0("
+SELECT 
+        AU_Information.AU, 
+        Merged_sites.StationID, 
+        Merged_sites.StationType,
+        Merged_data.DateSampled, 
+        Merged_data.Parameter, 
+        Merged_data.Result, 
+        AU_Information.WS_SQMI,
+        AU_Information.ORW, 
+        Merged_data.ID, 
+        Merged_data.Usability
+
+FROM 
+        (Merged_sites INNER JOIN Merged_data ON Merged_sites.StationID = Merged_data.StationID)
+
+INNER JOIN 
+        AU_Information ON Merged_sites.StationID = AU_Information.StationID
+WHERE
+    Usability = 'USE' AND Parameter = 'Escherichia coli';
+"))%>%
+    rename(c("CollectionDate" = "DateSampled", 
+             "SiteID" = "StationID",
+             "SiteType" = "StationType",
+             "ResultValue" = "Result"))
+
+odbcClose(con)
+
+```
+
+## Processing
+
+Clean up variable names and data representations. a mutate pipe is commented out, but this can be used to clean up any site type nomenclature
+
+```{r}
+
+primary_data$CollectionDate <- ymd(primary_data$CollectionDate)
+
+primary_data <- primary_data %>%
+    filter(CollectionDate >= porstart & CollectionDate <= porend)#%>%
+#mutate(SiteType = case_when(SiteType == "Lake Names"| SiteType =="Lakename2" ~ "Lake/Reservoir",
+#                           SiteType == "River1"|SiteType =="River2"~"River/Stream",
+#                           TRUE ~ SiteType))
+#primary_data$ParameterName <- str_trim(primary_data$ParameterName)
+```
+
+Read in the distribution QC failures and filter the bacteria data to remove them from what we will be processing. These data should be marked as "Don't Use" in the distribution code but some may have squeaked through.
+
+```{r}
+# QC_fail_aus <- read.csv("E:/2024 Integrated Report/Data/WQAR Setup/Final_Dist_Decisions_sample_year fails added.csv")
+# 
+# QC_fail_aus <- QC_fail_aus %>%
+#         separate(Pollutant.Pairs, into = c("AU", "Param"), sep = "-")%>%
+#         filter(Param == "E. coli")
+# 
+# primary_data <- primary_data %>%
+#         filter(!AU %in% QC_fail_aus$AU)
+```
+
+## Assessments
+
+Calculate the Attainments and Failures, each source is for a methodology per the assessment methodology. Refer to the AM for an explanation of how Individual Samples (IS) and Geometric mean (GM) are calculated
+
+-   Geomean requires a rolling function where a geomean is calculated for 5 samples in a 30 day window
+    -   The window is calculated based on when a sample is taken and the code looks for samples 30 days prior and calculates a geomean based on those samples
+        -   The code should be able to use more than 5 samples if need be, but more testing may be required
+    -   WQAR currently does not calculate geomeans correctly as it calculates a geomean for **every possible 30 day window with \>5 samples**.
+        -   This results an inflation of the number of geomeans calculated and, in some cases, could result in a waterbody being incorrectly assessed
+
+```{r}
+source("scripts/Bact_gmassess_function.R")
+source("scripts/Bact_isassess_function.R")
+```
+
+```{r}
+#bind the assessment summary tables
+bact_assessment_final <- rbind(bact_assessment_is,
+                               bact_assessment_gm)
+
+#Seperate ot the pairing parameter to make it readable
+bact_assessment_final <- bact_assessment_final %>%
+        separate(bact_pairing, c("AU", "Season", "SiteType", "ORW"), sep = "-")
+```
+
+### Exporting
+
+With the completion of the code, two csv's are generated:
+
+-   **"BACTERIA ASSESSMENTS"** is all of the assessments for both methodologies with their respective ATTAIN/FAIL designations
+-   **"BACTERIA IS ASSESSMENT SUMMARY"** is a QC document for checking the exceedance rates for AUs that were assessed under the individual sample methodology.
+
+```{r}
+setwd("output")
+
+write.csv(bact_assessment_final, 
+          "BACTERIA ASSESSMENTS.csv", 
+          row.names = F)
+
+write.csv(bact_assessment_is_sum, 
+          "BACTERIA IS ASSESSMENT SUMMARY.csv",
+          row.names = F)
+```
+
+## Summary
+
+QC will still need to be done in order to ensure the quality of these assessments. WQAR may have the functionality for this soon, but for now this code will produce the correct results.

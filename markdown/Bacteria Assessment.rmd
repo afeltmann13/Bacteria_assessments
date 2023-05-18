@@ -1,0 +1,94 @@
+---
+title: "Bacteria Assessment"
+author: "Andrew Feltmann"
+date: "8/23/2022"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+library(RODBC)
+library(stringr)
+library(foreign)
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(lubridate)
+library(psych)
+```
+
+```{r include = F}
+options(scipen = 999)
+```
+
+# Data read
+
+Set up the database connection and ead in the Bacteria data
+
+```{r}
+con <- RODBC::odbcConnectAccess2007("E:/2022 Integrated Report/Data/Phase 3 QC/DB Back-Up/PHASE 3 DATASET BACKUP 2022-11-16 - Copy.accdb")
+
+
+
+primary_data <- sqlFetch(con, "Bact Data")
+
+RODBC::odbcClose(con)
+```
+
+# Processing
+
+Clean up variable names and data representations.
+
+```{r}
+colnames(primary_data)[3] <- "CollectionDate"
+colnames(primary_data)[1] <- "AU"
+colnames(primary_data)[7] <- "ORW"
+
+primary_data$CollectionDate <- mdy(primary_data$CollectionDate)
+primary_data$ParameterName <- str_trim(primary_data$ParameterName)
+```
+
+Read in the distribution QC failures and filter the bacteria data to remove them from what we will be processing.
+
+```{r}
+QC_fail_aus <- read.csv("E:/2022 Integrated Report/Data/Phase 3 QC/WQAR Setup/Final_Dist_Decisions_sample_year fails added.csv")
+
+QC_fail_aus <- QC_fail_aus %>%
+        separate(Pollutant.Pairs, into = c("AU", "Param"), sep = "-")%>%
+        filter(Param == "E. coli")
+
+primary_data <- primary_data %>%
+        filter(!AU %in% QC_fail_aus$AU)
+```
+
+Calculate the Attainments and Failures, each source is for a methodology per the assessment methodology. Refer to the AM for an explanation of how Individual Samples (IS) and Geometric mean (GM) are calculated
+
+```{r}
+source("E:/2022 Integrated Report/Data Assessments/BACTERIA ASSESSMENTS/scripts/Bact_gmassess_function.R")
+source("E:/2022 Integrated Report/Data Assessments/BACTERIA ASSESSMENTS/scripts/Bact_isassess_function.R")
+```
+
+```{r}
+bact_assessment_final <- rbind(bact_assessment_is,
+                               bact_assessment_gm)
+
+bact_assessment_final <- bact_assessment_final %>%
+        separate(bact_pairing, c("AU", "Season", "SiteType", "ORW"), sep = "-")
+```
+
+With the completion of the code, two csv's are generated:
+
+* **"BACTERIA ASSESSMENTS"** is all of the assessments for both methodologies with their respective ATTAIN/FAIL designations
+* **"BACTERIA IS ASSESSMENT SUMMARY"** is a QC document for checking the exceedance rates for AUs that were assessed under the individual sample methodology. 
+
+```{r}
+setwd("E:/2022 Integrated Report/Data Assessments/BACTERIA ASSESSMENTS/output")
+
+write.csv(bact_assessment_final, 
+          "BACTERIA ASSESSMENTS.csv", 
+          row.names = F)
+
+write.csv(bact_assessment_is_sum, 
+          "BACTERIA IS ASSESSMENT SUMMARY.csv",
+          row.names = F)
+```
