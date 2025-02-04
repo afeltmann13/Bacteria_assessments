@@ -23,8 +23,13 @@ library(lubridate)
 library(psych)
 ```
 
-```{r , include = F}
+```{r , include = FALSE}
 options(scipen = 999)
+```
+
+```{r , include=FALSE}
+source("scripts/Bact_gmassess_function.R")
+source("scripts/Bact_isassess_function.R")
 ```
 
 ## Data read
@@ -36,14 +41,15 @@ Set up the database connection and read in the Bacteria data.
 -   connection may also need to be changed based on when IT finishes exporting the DB to a SQL server
 
 ```{r Data connection}
+#set year
 cycle <- "2024"
 
+#set period of Record
 porstart<- "2018-04-01"
 porend <- "2023-03-31"
 # Set up the database connection
 
-con <- odbcConnectAccess2007(paste0("E:/",cycle,
-                                    " Integrated Report/Data/WQP_datapipline/WQP pipeline/_targets/Phase 1 Database.accdb"))
+con <- odbcConnectAccess2007(paste0("DATABASE PATH HERE"))
 
 primary_data <- sqlQuery(con, paste0("
 SELECT 
@@ -115,8 +121,12 @@ Calculate the Attainments and Failures, each source is for a methodology per the
         -   This results an inflation of the number of geomeans calculated and, in some cases, could result in a waterbody being incorrectly assessed
 
 ```{r}
-source("scripts/Bact_gmassess_function.R")
-source("scripts/Bact_isassess_function.R")
+assess_start_date <- "2021-01-01"
+assess_end_date <- "2021-12-31" 
+
+bact_assessment_is <- Indvidual_Sample_Assessment(primary_data, assess_start_date, assess_end_date)
+bact_assessment_gm <- Geometric_Mean_Assessment(primary_data, assess_start_date, assess_end_date)
+                                                  
 ```
 
 ```{r}
@@ -124,12 +134,12 @@ source("scripts/Bact_isassess_function.R")
 bact_assessment_final <- rbind(bact_assessment_is,
                                bact_assessment_gm)
 
-#Seperate ot the pairing parameter to make it readable
+#Separate out the pairing parameter to make it readable
 bact_assessment_final <- bact_assessment_final %>%
         separate(bact_pairing, c("AU", "Season", "SiteType", "ORW"), sep = "-")
 ```
 
-### Exporting
+## Exporting
 
 With the completion of the code, two csv's are generated:
 
