@@ -42,8 +42,9 @@ porstart<- "2018-04-01"
 porend <- "2023-03-31"
 # Set up the database connection
 
-con <- odbcConnectAccess2007(paste0("E:/",cycle,
-                                    " Integrated Report/Data/WQP_datapipline/WQP pipeline/_targets/Phase 1 Database.accdb"))
+connection_string <- paste0("Database Connection Here")
+
+con <- odbcConnectAccess2007(connection_string)
 
 primary_data <- sqlQuery(con, paste0("
 SELECT 
@@ -94,7 +95,7 @@ primary_data <- primary_data %>%
 Read in the distribution QC failures and filter the bacteria data to remove them from what we will be processing. These data should be marked as "Don't Use" in the distribution code but some may have squeaked through.
 
 ```{r}
-# QC_fail_aus <- read.csv("E:/2024 Integrated Report/Data/WQAR Setup/Final_Dist_Decisions_sample_year fails added.csv")
+# QC_fail_aus <- read.csv("failedAUs")
 # 
 # QC_fail_aus <- QC_fail_aus %>%
 #         separate(Pollutant.Pairs, into = c("AU", "Param"), sep = "-")%>%

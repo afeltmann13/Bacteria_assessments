@@ -118,7 +118,7 @@ lake_ORW_raw <- left_join(lake_ORW_raw,
 
 # Calculate Geometric Means 
 
-# If its stupid and it works, it isn't stupid for each bact pairing we calculate 
+# For each bact pairing we calculate 
 # the rolling geometric mean for 5 sample cycles that are taken within 30 days of
 # each other NAs are filled where a 5 day geomean cannot be calculated
 
